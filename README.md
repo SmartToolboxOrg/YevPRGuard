@@ -1,31 +1,46 @@
 # AI Review - IntelliJ IDEA Plugin
 
-A GitHub PR-style code review plugin for IntelliJ IDEA, powered by an external AI review service.
+A GitHub PR-style code review plugin for JetBrains IDEs, powered by [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview).
 
 ## Features
 
-- **Git diff collection** - Compares working tree vs base branch, or an explicit commit range
-- **External review service integration** - Sends diffs to a configurable HTTP endpoint
-- **Findings tree** - Tool window listing findings grouped by file and severity
-- **Inline annotations** - Gutter icons and editor highlights on lines with findings
-- **Quick-fix suggestions** - Apply suggestion patches directly from the editor (Alt+Enter)
-- **Caching** - Results cached by diff hash to avoid redundant requests
-- **Background execution** - All network/git operations run off the EDT with progress and cancellation
+- **AI-powered code review** — sends git diffs to Claude for analysis via Claude Code CLI
+- **Inline annotations** — findings appear as gutter icons, editor highlights, and tooltips
+- **Quick-fix suggestions** — apply AI-suggested patches directly from the editor (Alt+Enter)
+- **Findings tree** — tool window listing findings grouped by file and severity
+- **Manual review comments** — add your own comments on any line
+- **Publish to GitHub** — push selected findings as PR review comments via [GitHub CLI](https://cli.github.com/)
+- **Generate PR descriptions** — auto-generate a PR title and body from your diff
+- **Caching** — results cached by diff hash to avoid redundant requests
+- **Background execution** — all operations run off the EDT with progress and cancellation
 
 ## Prerequisites
 
-- IntelliJ IDEA 2024.1+ (Community or Ultimate)
+- IntelliJ IDEA 2024.1+ (Community or Ultimate, or any compatible JetBrains IDE)
 - JDK 17+
 - Git available on PATH
-- A running review service (see [Review Service Contract](#review-service-contract))
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) — installed and authenticated (`claude login`)
+- [GitHub CLI (gh)](https://cli.github.com/) — installed and authenticated (`gh auth login`) — required for PR publishing
 
 ## Setup
 
-### Build
+### Install from JetBrains Marketplace
+
+1. In your IDE: **Settings → Plugins → Marketplace** → search for **AI Review**
+2. Click **Install** and restart the IDE
+
+### Install from disk
+
+1. Download the latest release from [Releases](https://github.com/SmartToolboxOrg/YevPRGuard/releases)
+2. In your IDE: **Settings → Plugins → gear icon → Install Plugin from Disk** → select the zip
+
+### Build from source
 
 ```bash
-./gradlew build
+./gradlew buildPlugin
 ```
+
+The distributable zip will be at `build/distributions/ai-review-plugin-1.0.0.zip`.
 
 ### Run in development (sandbox IDE)
 
@@ -33,104 +48,47 @@ A GitHub PR-style code review plugin for IntelliJ IDEA, powered by an external A
 ./gradlew runIde
 ```
 
-This launches a sandboxed IntelliJ instance with the plugin installed.
-
-### Install from disk
-
-1. Build the plugin: `./gradlew buildPlugin`
-2. The distributable zip is at `build/distributions/ai-review-plugin-1.0.0.zip`
-3. In IntelliJ: Settings > Plugins > gear icon > Install Plugin from Disk > select the zip
-
 ## Configuration
 
-Open **Settings > Tools > AI Review** to configure:
+Open **Settings → Tools → AI Review** to configure:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Service endpoint | `http://localhost:8080/review` | URL of the review service |
-| Default base ref | `origin/main` | Git ref to diff against |
-| Request timeout | 120s | HTTP request timeout |
-| Max diff size | 500KB | Diffs larger than this are truncated |
-| Max file content | 100KB | Per-file content limit |
-| Max retries | 2 | Retry count for transient failures |
-| Send file content | true | Include file content in requests |
+| Setting          | Description                                                    |
+|------------------|----------------------------------------------------------------|
+| Claude CLI path  | Path to `claude` binary (auto-detected from common locations)  |
+| Claude model     | Model to use for reviews (optional)                            |
+| GitHub CLI path  | Path to `gh` binary (auto-detected from common locations)      |
+| GitHub token     | `GH_TOKEN` for authentication (alternative to `gh auth login`) |
+| Default base ref | Git ref to diff against (default: `origin/main`)               |
+| Request timeout  | Claude CLI timeout in seconds (default: 300)                   |
 
 ## Usage
 
-### From the tool window
+### Run a review
 
-1. Open the **AI Review** tool window (bottom panel)
-2. Select mode: **Working Tree** or **Commit Range**
-3. Set the base ref (e.g., `origin/main`, `develop`, a commit SHA)
-4. Click **Run Review**
-5. Double-click a finding to navigate to the file and line
+- **Tools → AI Review → Run Review** — review your full diff against the base branch
+- Right-click in editor → **Run AI Review for This File** — review only the current file
+- Or use the **AI Review** tool window (bottom panel) to select mode and base ref
 
-### From the menu
+### Apply suggestions
 
-- **Tools > AI Review > Run Review** - runs a full review with default settings
-- Right-click in editor > **Run AI Review for This File** - reviews only the current file
+When a finding includes a suggestion patch, press **Alt+Enter** on the highlighted line and select **Apply AI suggestion**.
 
-### Applying suggestions
+### Publish to GitHub
 
-When a finding includes a suggestion patch, press **Alt+Enter** on the highlighted line and select **Apply AI suggestion**. If automatic application fails, a diff preview dialog opens for manual review.
+1. Run a review on a branch that has an open PR
+2. Select findings in the tool window
+3. **Tools → AI Review → Publish to GitHub PR**
 
-## Review Service Contract
+### Generate PR description
 
-The plugin sends a POST request with this JSON body:
-
-```json
-{
-  "projectName": "my-project",
-  "baseRef": "origin/main",
-  "headRef": "HEAD",
-  "mode": "WORKTREE",
-  "diff": "unified diff text...",
-  "files": [
-    {
-      "path": "src/main/java/Foo.java",
-      "content": "file content or null",
-      "language": "JAVA"
-    }
-  ]
-}
-```
-
-The service must return a JSON array of findings:
-
-```json
-[
-  {
-    "filePath": "src/main/java/Foo.java",
-    "line": 42,
-    "endLine": 44,
-    "severity": "warning",
-    "ruleId": "null-check",
-    "message": "Potential null pointer dereference",
-    "suggestion": "Add a null check before accessing .getName()",
-    "suggestionPatch": "--- a/src/main/java/Foo.java\n+++ b/src/main/java/Foo.java\n@@ -41,3 +41,5 @@\n ...\n"
-  }
-]
-```
-
-### Finding fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `filePath` | yes | Relative path from repo root |
-| `line` | yes | 1-based line number (new file version) |
-| `endLine` | no | End line for multi-line findings |
-| `severity` | no | `info`, `warning`, or `error` (default: `info`) |
-| `ruleId` | no | Optional rule identifier |
-| `message` | yes | Human-readable finding description |
-| `suggestion` | no | Short text suggestion |
-| `suggestionPatch` | no | Unified diff patch for auto-apply |
+**Tools → AI Review → Generate PR Description** — generates a title and body from your diff using Claude.
 
 ## Project Structure
 
 ```
 src/main/kotlin/com/aireview/
   model/          - Data classes (findings, requests)
-  service/        - Git diff, HTTP client, findings manager, review runner
+  service/        - Claude Code CLI, GitHub CLI, Git diff, findings manager
   settings/       - Persistent configuration
   ui/             - Tool window factory and panel
   annotator/      - Line markers and external annotator
@@ -144,16 +102,10 @@ src/main/resources/
 
 ## Development
 
-### Debug
-
 1. Open this project in IntelliJ IDEA
 2. Run the `runIde` Gradle task with debugger attached
 3. In the sandbox IDE, open a git-tracked project and use the plugin
 
-### Architecture notes
+## License
 
-- **FindingsManager** is the central project-scoped service that holds current results. The tool window, annotators, and line markers all read from it.
-- **ReviewRunner** orchestrates the flow: git diff -> cache check -> HTTP call -> store findings. Runs as a cancellable background task.
-- **ExternalAnnotator** is used for highlights because findings come from an external source (not PSI analysis).
-- **LineMarkerProvider** provides gutter icons, operating on PSI leaf elements.
-- All network and git operations run off the EDT via `ProgressManager.run(Backgroundable)`.
+[Apache License 2.0](LICENSE)

@@ -2,7 +2,7 @@
     <id>com.aireview.plugin</id>
     <name>AI Review</name>
     <version>1.0.0</version>
-    <vendor email="yevgen.polukov@gmail.com" url="https://github.com/PolukovY">Yevgen Polukov</vendor>
+    <vendor email="yevgen.polukov@gmail.com" url="https://github.com/SmartToolboxOrg">Yevgen Polukov</vendor>
 
     <description><![CDATA[
     <h2>AI-Powered Code Review for JetBrains IDEs</h2>
