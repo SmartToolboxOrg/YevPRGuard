@@ -78,11 +78,6 @@
                 language=""
                 implementationClass="com.aireview.annotator.ReviewLineMarkerProvider"/>
 
-        <!-- Gutter "+" icon for adding manual review comments -->
-        <codeInsight.lineMarkerProvider
-                language=""
-                implementationClass="com.aireview.annotator.AddCommentLineMarkerProvider"/>
-
         <!-- External annotator for highlights and tooltips -->
         <externalAnnotator
                 language=""

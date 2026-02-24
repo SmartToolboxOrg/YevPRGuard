@@ -239,15 +239,13 @@ class ReviewToolWindowPanel(
                 }
                 popup.add(publishItem)
 
-                // Delete is only available for manual comments
-                if (sf.source == FindingSource.MANUAL) {
-                    popup.addSeparator()
-                    val deleteItem = JMenuItem("Delete Comment")
-                    deleteItem.addActionListener {
-                        FindingsManager.getInstance(project).removeManualComment(sf.id)
-                    }
-                    popup.add(deleteItem)
+                // Delete comment
+                popup.addSeparator()
+                val deleteItem = JMenuItem("Delete Comment")
+                deleteItem.addActionListener {
+                    FindingsManager.getInstance(project).removeFinding(sf.id)
                 }
+                popup.add(deleteItem)
 
                 popup.show(findingsTree, e.x, e.y)
             }

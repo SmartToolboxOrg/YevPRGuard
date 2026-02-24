@@ -230,6 +230,15 @@ class FindingsManager(private val project: Project) : PersistentStateComponent<F
         }
     }
 
+    fun removeFinding(id: String) {
+        val removed = selectableFindings.removeIf { it.id == id }
+        if (removed) {
+            saveCurrentSessionToState()
+            log.info("Removed finding $id")
+            notifyListeners()
+        }
+    }
+
     /**
      * Update the message of any finding (AI or manual) by its ID.
      */
