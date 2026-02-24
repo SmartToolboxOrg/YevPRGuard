@@ -1,0 +1,157 @@
+<idea-plugin>
+    <id>com.aireview.plugin</id>
+    <name>AI Review</name>
+    <version>1.0.0</version>
+    <vendor email="yevgen.polukov@gmail.com" url="https://github.com/PolukovY">Yevgen Polukov</vendor>
+
+    <description><![CDATA[
+    <h2>AI-Powered Code Review for JetBrains IDEs</h2>
+    <p>
+      Get GitHub PR-style code reviews directly inside your IDE, powered by
+      <a href="https://docs.anthropic.com/en/docs/claude-code/overview">Claude Code CLI</a>.
+      AI Review collects your git diffs, sends them to Claude for analysis, and renders findings as inline
+      annotations with optional quick-fix suggestions — all without leaving your editor.
+      Publish findings directly to GitHub PRs using the
+      <a href="https://cli.github.com/">GitHub CLI (gh)</a>.
+    </p>
+
+    <h3>Features</h3>
+    <ul>
+      <li><b>One-click AI review</b> — run a full review on your current diff or a single file</li>
+      <li><b>Inline annotations</b> — findings appear as gutter icons, highlights, and tooltips</li>
+      <li><b>Quick-fix suggestions</b> — apply AI-suggested fixes with a single click</li>
+      <li><b>Manual review comments</b> — add your own comments on any line</li>
+      <li><b>Publish to GitHub</b> — push selected findings as PR review comments</li>
+      <li><b>Generate PR descriptions</b> — auto-generate a PR title and body from your diff</li>
+    </ul>
+
+    <h3>Getting Started</h3>
+    <ol>
+      <li>Install <a href="https://docs.anthropic.com/en/docs/claude-code/overview">Claude Code CLI</a> and authenticate (<code>claude login</code>)</li>
+      <li>Install <a href="https://cli.github.com/">GitHub CLI</a> and authenticate (<code>gh auth login</code>) — needed for PR publishing</li>
+      <li>Install the plugin and restart your IDE</li>
+      <li>Open <b>Settings → Tools → AI Review</b> to verify CLI paths are detected (or set them manually)</li>
+      <li>Open a project with Git history, then run <b>Tools → AI Review → Run Review</b></li>
+    </ol>
+
+    <h3>Requirements</h3>
+    <ul>
+      <li>IntelliJ IDEA 2024.1+ (or any compatible JetBrains IDE)</li>
+      <li>Git integration enabled</li>
+      <li><a href="https://docs.anthropic.com/en/docs/claude-code/overview">Claude Code CLI</a> — installed and authenticated</li>
+      <li><a href="https://cli.github.com/">GitHub CLI (gh)</a> — installed and authenticated (for PR publishing)</li>
+    </ul>
+    ]]></description>
+
+    <change-notes><![CDATA[
+    <h3>1.0.0</h3>
+    <ul>
+      <li>Initial release</li>
+      <li>AI-powered code review with inline annotations and quick-fix suggestions</li>
+      <li>Single-file and full-diff review modes</li>
+      <li>Manual review comment support</li>
+      <li>Publish findings to GitHub PRs</li>
+      <li>AI-generated PR descriptions</li>
+    </ul>
+    ]]></change-notes>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>Git4Idea</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Tool window registered via factory -->
+        <toolWindow id="AI Review"
+                    anchor="bottom"
+                    factoryClass="com.aireview.ui.ReviewToolWindowFactory"
+                    icon="/icons/ai-review-13.svg"/>
+
+        <!-- Persistent settings stored per application -->
+        <applicationService
+                serviceImplementation="com.aireview.settings.ReviewSettings"/>
+
+        <!-- Project-scoped service that holds current findings -->
+        <projectService
+                serviceImplementation="com.aireview.service.FindingsManager"/>
+
+        <!-- Line marker provider for gutter icons on lines with findings -->
+        <codeInsight.lineMarkerProvider
+                language=""
+                implementationClass="com.aireview.annotator.ReviewLineMarkerProvider"/>
+
+        <!-- Gutter "+" icon for adding manual review comments -->
+        <codeInsight.lineMarkerProvider
+                language=""
+                implementationClass="com.aireview.annotator.AddCommentLineMarkerProvider"/>
+
+        <!-- External annotator for highlights and tooltips -->
+        <externalAnnotator
+                language=""
+                implementationClass="com.aireview.annotator.ReviewExternalAnnotator"/>
+
+        <!-- Configurable settings panel under Tools -->
+        <applicationConfigurable
+                parentId="tools"
+                instance="com.aireview.settings.ReviewSettingsConfigurable"
+                id="com.aireview.settings.ReviewSettingsConfigurable"
+                displayName="AI Review"/>
+
+        <!-- Notification group -->
+        <notificationGroup id="AI Review"
+                           displayType="BALLOON"
+                           isLogByDefault="true"/>
+    </extensions>
+
+    <actions>
+        <!-- Top-level menu under Tools -->
+        <group id="com.aireview.ActionGroup"
+               text="AI Review"
+               popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+
+            <action id="com.aireview.action.RunReview"
+                    class="com.aireview.action.RunReviewAction"
+                    text="Run Review"
+                    description="Run AI code review on current diff"
+                    icon="/icons/ai-review-13.svg"/>
+
+            <action id="com.aireview.action.RunReviewCurrentFile"
+                    class="com.aireview.action.RunReviewCurrentFileAction"
+                    text="Run AI Review for Current File"
+                    description="Run AI review scoped to the current file"/>
+        </group>
+
+        <!-- Editor context menu entry -->
+        <action id="com.aireview.action.RunReviewCurrentFileContext"
+                class="com.aireview.action.RunReviewCurrentFileAction"
+                text="Run AI Review for This File"
+                icon="/icons/ai-review-13.svg">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+
+        <!-- Add Review Comment in editor + gutter context menus -->
+        <action id="com.aireview.action.AddManualComment"
+                class="com.aireview.action.AddManualCommentAction"
+                text="Add Review Comment"
+                description="Add a manual review comment on this line"
+                icon="/icons/add-comment.svg">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorGutterPopupMenu" anchor="first"/>
+        </action>
+
+        <!-- Publish to GitHub in Tools > AI Review menu -->
+        <action id="com.aireview.action.PublishToGitHub"
+                class="com.aireview.action.PublishToGitHubAction"
+                text="Publish to GitHub PR"
+                description="Publish selected review findings to the current GitHub PR">
+            <add-to-group group-id="com.aireview.ActionGroup" anchor="last"/>
+        </action>
+
+        <!-- Generate PR Description standalone action -->
+        <action id="com.aireview.action.GeneratePrDescription"
+                class="com.aireview.action.GeneratePrDescriptionAction"
+                text="Generate PR Description"
+                description="Generate a PR title and description from the current diff using AI">
+            <add-to-group group-id="com.aireview.ActionGroup" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>
