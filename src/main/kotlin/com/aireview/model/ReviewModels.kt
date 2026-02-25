@@ -32,7 +32,7 @@ enum class Severity {
 @Serializable
 data class ReviewFinding(
     val filePath: String,
-    val line: Int,
+    val line: Int? = null,
     val endLine: Int? = null,
     val severity: String = "info",
     val ruleId: String? = null,
@@ -41,7 +41,7 @@ data class ReviewFinding(
     val suggestionPatch: String? = null
 ) {
     val severityEnum: Severity get() = Severity.fromString(severity)
-    val lineRange: IntRange get() = line..(endLine ?: line)
+    val lineRange: IntRange get() = (line ?: 0)..(endLine ?: line ?: 0)
 }
 
 /**

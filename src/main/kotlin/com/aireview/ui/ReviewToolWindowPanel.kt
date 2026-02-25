@@ -1,6 +1,7 @@
 package com.aireview.ui
 
 import com.aireview.action.GeneratePrDescriptionAction
+import com.aireview.action.OneClickReviewAction
 import com.aireview.action.PublishToGitHubAction
 import com.aireview.model.FindingSource
 import com.aireview.model.ReviewMode
@@ -67,6 +68,7 @@ class ReviewToolWindowPanel(
     private val clearButton = JButton("Clear")
     private val settingsButton = JButton("Settings")
     private val prDescriptionButton = JButton("PR Description")
+    private val reviewAndCreatePrButton = JButton("Review & Create PR")
     private val selectAllButton = JButton("Select All")
     private val deselectAllButton = JButton("Deselect All")
     private val publishButton = JButton("Publish Comments to PR")
@@ -111,6 +113,7 @@ class ReviewToolWindowPanel(
             // Row 2: Action buttons
             val buttonRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 2))
             buttonRow.add(runButton)
+            buttonRow.add(reviewAndCreatePrButton)
             buttonRow.add(clearButton)
             buttonRow.add(settingsButton)
             buttonRow.add(prDescriptionButton)
@@ -162,6 +165,10 @@ class ReviewToolWindowPanel(
 
         prDescriptionButton.addActionListener {
             GeneratePrDescriptionAction.generatePrDescription(project)
+        }
+
+        reviewAndCreatePrButton.addActionListener {
+            OneClickReviewAction.runFullPipeline(project)
         }
 
         selectAllButton.addActionListener {
@@ -222,7 +229,7 @@ class ReviewToolWindowPanel(
                 // Edit is available for all findings (AI and manual)
                 val editItem = JMenuItem("Edit Comment")
                 editItem.addActionListener {
-                    val dialog = EditCommentDialog(sf.finding.filePath, sf.finding.line, sf.finding.message)
+                    val dialog = EditCommentDialog(sf.finding.filePath, sf.finding.line ?: 0, sf.finding.message)
                     if (dialog.showAndGet()) {
                         val newMessage = dialog.getMessage()
                         if (newMessage.isNotEmpty() && newMessage != sf.finding.message) {
@@ -323,7 +330,7 @@ class ReviewToolWindowPanel(
                     // Sort: errors first, then by line
                     val sorted = findings.sortedWith(
                         compareByDescending<SelectableFinding> { it.finding.severityEnum.ordinal }
-                            .thenBy { it.finding.line }
+                            .thenBy { it.finding.line ?: 0 }
                     )
                     var allSelected = true
                     for (sf in sorted) {
@@ -362,7 +369,7 @@ class ReviewToolWindowPanel(
         val vf = LocalFileSystem.getInstance().findFileByIoFile(file) ?: return
 
         // Line numbers in findings are 1-based; OpenFileDescriptor expects 0-based
-        val line = (finding.line - 1).coerceAtLeast(0)
+        val line = ((finding.line ?: 1) - 1).coerceAtLeast(0)
         val descriptor = OpenFileDescriptor(project, vf, line, 0)
         FileEditorManager.getInstance(project).openTextEditor(descriptor, true)
     }
@@ -400,7 +407,7 @@ class ReviewToolWindowPanel(
                             )
                         )
                         renderer.append(
-                            "L${finding.line}: ${finding.message}",
+                            "L${finding.line ?: "?"}: ${finding.message}",
                             com.intellij.ui.SimpleTextAttributes(
                                 com.intellij.ui.SimpleTextAttributes.STYLE_PLAIN,
                                 JBColor(0x4A86C8, 0x6897BB)
@@ -419,7 +426,7 @@ class ReviewToolWindowPanel(
                         }
                         val ruleTag = finding.ruleId?.let { " [$it]" } ?: ""
                         renderer.append(
-                            "${prefix}L${finding.line}$ruleTag: ${finding.message}",
+                            "${prefix}L${finding.line ?: "?"}$ruleTag: ${finding.message}",
                             com.intellij.ui.SimpleTextAttributes(
                                 com.intellij.ui.SimpleTextAttributes.STYLE_PLAIN,
                                 color

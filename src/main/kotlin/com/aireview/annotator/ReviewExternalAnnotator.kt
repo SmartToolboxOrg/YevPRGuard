@@ -51,11 +51,12 @@ class ReviewExternalAnnotator : ExternalAnnotator<ReviewExternalAnnotator.Info, 
         val document = file.viewProvider.document ?: return
 
         for (finding in findings) {
-            val lineIndex = finding.line - 1 // Convert to 0-based
+            val line = finding.line ?: continue // Skip file-level findings with no line
+            val lineIndex = line - 1 // Convert to 0-based
             if (lineIndex < 0 || lineIndex >= document.lineCount) continue
 
             val startOffset = document.getLineStartOffset(lineIndex)
-            val endLineIndex = (finding.endLine ?: finding.line) - 1
+            val endLineIndex = (finding.endLine ?: line) - 1
             val safeEndLine = endLineIndex.coerceIn(0, document.lineCount - 1)
             val endOffset = document.getLineEndOffset(safeEndLine)
 

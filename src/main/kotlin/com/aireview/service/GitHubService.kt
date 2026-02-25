@@ -130,6 +130,96 @@ class GitHubService(private val workDir: File) {
     }
 
     /**
+     * Get the current git branch name.
+     * Throws if in detached HEAD state.
+     */
+    fun getCurrentBranch(): String {
+        val pb = ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD")
+            .directory(workDir)
+            .redirectErrorStream(true)
+        val process = pb.start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        if (!process.waitFor(10, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            throw GitHubCliException("git rev-parse timed out")
+        }
+        if (process.exitValue() != 0) {
+            throw GitHubCliException("Failed to get current branch: $output")
+        }
+        if (output == "HEAD") {
+            throw GitHubCliException("Cannot create PR from detached HEAD state. Please checkout a branch first.")
+        }
+        return output
+    }
+
+    /**
+     * Check if the current branch has been pushed to the remote.
+     */
+    fun isBranchPushed(branch: String): Boolean {
+        require(!branch.startsWith("-")) { "Invalid branch name: $branch" }
+        val pb = ProcessBuilder("git", "rev-parse", "--verify", "origin/$branch")
+            .directory(workDir)
+            .redirectErrorStream(true)
+        val process = pb.start()
+        process.inputStream.bufferedReader().readText() // consume output
+        if (!process.waitFor(10, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            return false
+        }
+        return process.exitValue() == 0
+    }
+
+    /**
+     * Push a branch to the remote with upstream tracking.
+     */
+    fun pushBranch(branch: String) {
+        require(!branch.startsWith("-")) { "Invalid branch name: $branch" }
+        val pb = ProcessBuilder("git", "push", "-u", "origin", branch)
+            .directory(workDir)
+            .redirectErrorStream(false)
+        val process = pb.start()
+        val stderr = CompletableFuture.supplyAsync { process.errorStream.bufferedReader().readText() }
+        val stdout = process.inputStream.bufferedReader().readText()
+        if (!process.waitFor(60, TimeUnit.SECONDS)) {
+            process.destroy()
+            if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+            }
+            throw GitHubCliException("git push timed out after 60s")
+        }
+        val stderrText = stderr.get(5, TimeUnit.SECONDS)
+        if (process.exitValue() != 0) {
+            throw GitHubCliException("Failed to push branch '$branch': ${stderrText.ifBlank { stdout }}")
+        }
+        log.info("Pushed branch '$branch' to origin")
+    }
+
+    /**
+     * Create a new PR via `gh pr create`, then fetch its details via `gh pr view`.
+     */
+    fun createPr(title: String, body: String, baseBranch: String): PrInfo {
+        val ghPath = resolveGhCliPath()
+        val (exitCode, stdout, stderr) = runGh(
+            ghPath, "pr", "create",
+            "--title", title,
+            "--body", body,
+            "--base", baseBranch
+        )
+
+        if (exitCode != 0) {
+            throw GitHubCliException("Failed to create PR: ${stderr.ifBlank { stdout }.take(300)}")
+        }
+
+        log.info("PR created: ${stdout.trim()}")
+
+        // gh pr create outputs the PR URL; fetch structured info via gh pr view
+        val pr = detectCurrentPr()
+            ?: throw GitHubCliException("PR was created but could not be detected afterwards")
+
+        return pr
+    }
+
+    /**
      * Update a PR's title and body via `gh pr edit`.
      */
     fun updatePrTitleAndBody(prNumber: Int, title: String, body: String) {
@@ -216,7 +306,7 @@ class GitHubService(private val workDir: File) {
         // Filter out duplicates
         val newFindings = findings.filter { sf ->
             val body = buildCommentBody(sf)
-            !existing.contains(Triple(sf.finding.filePath, sf.finding.line, body))
+            !existing.contains(Triple(sf.finding.filePath, sf.finding.line ?: 0, body))
         }
 
         val skipped = findings.size - newFindings.size
@@ -240,7 +330,7 @@ class GitHubService(private val workDir: File) {
                     val body = buildCommentBody(sf)
                     addJsonObject {
                         put("path", finding.filePath)
-                        put("line", finding.line)
+                        put("line", finding.line ?: 1)
                         put("side", "RIGHT")
                         put("body", body)
                     }

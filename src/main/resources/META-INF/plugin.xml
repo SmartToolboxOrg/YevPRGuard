@@ -113,6 +113,12 @@
                     class="com.aireview.action.RunReviewCurrentFileAction"
                     text="Run AI Review for Current File"
                     description="Run AI review scoped to the current file"/>
+
+            <action id="com.aireview.action.OneClickReview"
+                    class="com.aireview.action.OneClickReviewAction"
+                    text="Review &amp; Create PR"
+                    description="Run AI review, create/update PR, and publish all findings in one step"
+                    icon="/icons/ai-review-13.svg"/>
         </group>
 
         <!-- Editor context menu entry -->

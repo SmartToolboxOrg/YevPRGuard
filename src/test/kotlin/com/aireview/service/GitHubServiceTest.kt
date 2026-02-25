@@ -262,4 +262,152 @@ class GitHubServiceTest {
         val body = payload["body"]?.jsonPrimitive?.content!!
         assertEquals("LGTM with comments", body)
     }
+
+    // --- PublishResult data class tests ---
+
+    @Test
+    fun `PublishResult holds correct values`() {
+        val result = GitHubService.PublishResult(published = 5, skipped = 2)
+        assertEquals(5, result.published)
+        assertEquals(2, result.skipped)
+    }
+
+    @Test
+    fun `PublishResult with zero values`() {
+        val result = GitHubService.PublishResult(published = 0, skipped = 0)
+        assertEquals(0, result.published)
+        assertEquals(0, result.skipped)
+    }
+
+    @Test
+    fun `PublishResult supports copy`() {
+        val result = GitHubService.PublishResult(published = 3, skipped = 1)
+        val copy = result.copy(published = 10)
+        assertEquals(3, result.published)
+        assertEquals(10, copy.published)
+        assertEquals(1, copy.skipped)
+    }
+
+    @Test
+    fun `PublishResult equality works`() {
+        val a = GitHubService.PublishResult(published = 3, skipped = 1)
+        val b = GitHubService.PublishResult(published = 3, skipped = 1)
+        assertEquals(a, b)
+    }
+
+    // --- Branch validation tests ---
+
+    @Test
+    fun `isBranchPushed rejects branch names starting with dash`() {
+        val service = GitHubService(java.io.File("."))
+        try {
+            service.isBranchPushed("--delete")
+            fail("Expected IllegalArgumentException")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("Invalid branch name"))
+        }
+    }
+
+    @Test
+    fun `pushBranch rejects branch names starting with dash`() {
+        val service = GitHubService(java.io.File("."))
+        try {
+            service.pushBranch("-evil-flag")
+            fail("Expected IllegalArgumentException")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("Invalid branch name"))
+        }
+    }
+
+    @Test
+    fun `isBranchPushed rejects double-dash branch names`() {
+        val service = GitHubService(java.io.File("."))
+        try {
+            service.isBranchPushed("--all")
+            fail("Expected IllegalArgumentException")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("Invalid branch name"))
+        }
+    }
+
+    // --- getCurrentBranch tests (runs in actual git repo) ---
+
+    @Test
+    fun `getCurrentBranch returns non-empty string in git repo`() {
+        val service = GitHubService(java.io.File("."))
+        val branch = service.getCurrentBranch()
+        assertTrue(branch.isNotBlank())
+        assertNotEquals("HEAD", branch)
+    }
+
+    @Test
+    fun `getCurrentBranch does not return HEAD literal`() {
+        // In a normal checkout (not detached), the branch should be a real name
+        val service = GitHubService(java.io.File("."))
+        val branch = service.getCurrentBranch()
+        assertFalse(branch == "HEAD")
+    }
+
+    // --- isBranchPushed tests (runs in actual git repo) ---
+
+    @Test
+    fun `isBranchPushed returns boolean for main branch`() {
+        val service = GitHubService(java.io.File("."))
+        // main should exist on origin in most repos; just verify it returns without error
+        val result = service.isBranchPushed("main")
+        // result is true or false depending on remote state — just ensure no exception
+        assertNotNull(result)
+    }
+
+    @Test
+    fun `isBranchPushed returns false for nonexistent branch`() {
+        val service = GitHubService(java.io.File("."))
+        val result = service.isBranchPushed("this-branch-does-not-exist-xyz-12345")
+        assertFalse(result)
+    }
+
+    // --- buildCommentBody edge cases ---
+
+    @Test
+    fun `buildCommentBody with empty message`() {
+        val sf = SelectableFinding(ReviewFinding(filePath = "a.kt", line = 1, message = ""))
+        val body = GitHubService.buildCommentBody(sf)
+        assertEquals("", body)
+    }
+
+    @Test
+    fun `buildCommentBody with suggestion only no patch`() {
+        val sf = SelectableFinding(ReviewFinding(
+            filePath = "a.kt", line = 1, message = "Issue",
+            suggestion = "Do this instead"
+        ))
+        val body = GitHubService.buildCommentBody(sf)
+        assertTrue(body.contains("**Suggestion:** Do this instead"))
+        assertFalse(body.contains("```suggestion"))
+    }
+
+    @Test
+    fun `buildCommentBody with patch only no suggestion`() {
+        val sf = SelectableFinding(ReviewFinding(
+            filePath = "a.kt", line = 1, message = "Issue",
+            suggestionPatch = "val x = 1"
+        ))
+        val body = GitHubService.buildCommentBody(sf)
+        assertFalse(body.contains("**Suggestion:**"))
+        assertTrue(body.contains("```suggestion\nval x = 1\n```"))
+    }
+
+    @Test
+    fun `buildCommentBody case insensitive severity matching`() {
+        val sf = SelectableFinding(ReviewFinding(filePath = "a.kt", line = 1, severity = "ERROR", message = "Bad"))
+        val body = GitHubService.buildCommentBody(sf)
+        assertTrue(body.startsWith("**[Critical]**"))
+    }
+
+    @Test
+    fun `buildCommentBody unknown severity has no badge`() {
+        val sf = SelectableFinding(ReviewFinding(filePath = "a.kt", line = 1, severity = "custom", message = "Msg"))
+        val body = GitHubService.buildCommentBody(sf)
+        assertEquals("Msg", body)
+    }
 }

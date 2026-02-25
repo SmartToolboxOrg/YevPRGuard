@@ -185,7 +185,7 @@ class ClaudeCodeService {
             if (findings.isNotEmpty()) {
                 appendLine("<review-findings>")
                 for (f in findings) {
-                    appendLine("- [${f.severity}] ${f.filePath}:${f.line} — ${f.message}")
+                    appendLine("- [${f.severity}] ${f.filePath}:${f.line ?: "?"} — ${f.message}")
                 }
                 appendLine("</review-findings>")
                 appendLine()
