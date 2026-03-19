@@ -1,0 +1,274 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Dry run — build only, skip tag/release/push'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # ── Checkout ───────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # full history needed for changelog
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Java / Gradle setup ────────────────────────────────────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # ── Compute next version ───────────────────────────────────────────────
+      - name: Compute next version
+        id: version
+        run: |
+          CURRENT=$(grep '^version = ' build.gradle.kts | sed 's/version = "\(.*\)"/\1/')
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+          BUMP="${{ inputs.bump }}"
+
+          case "$BUMP" in
+            major) NEW="$((MAJOR+1)).0.0"            ;;
+            minor) NEW="${MAJOR}.$((MINOR+1)).0"      ;;
+            patch) NEW="${MAJOR}.${MINOR}.$((PATCH+1))" ;;
+          esac
+
+          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
+          echo "new=${NEW}"         >> "$GITHUB_OUTPUT"
+          echo "tag=v${NEW}"        >> "$GITHUB_OUTPUT"
+          echo "Bumping: ${CURRENT} → ${NEW} (${BUMP} bump)"
+
+      # ── Generate changelog ─────────────────────────────────────────────────
+      - name: Generate changelog
+        id: changelog
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          GIT_RANGE="${LAST_TAG:+${LAST_TAG}..HEAD}"
+          GIT_RANGE="${GIT_RANGE:-HEAD}"
+          NEW_VERSION="${{ steps.version.outputs.new }}"
+
+          python3 - "$NEW_VERSION" "$GIT_RANGE" << 'PYEOF'
+          import subprocess, sys, re
+          from datetime import date
+
+          version   = sys.argv[1]
+          git_range = sys.argv[2]
+
+          result = subprocess.run(
+              ["git", "log", git_range, "--pretty=format:%s|||%h", "--no-merges"],
+              capture_output=True, text=True,
+          )
+          raw = [l for l in result.stdout.strip().splitlines() if l]
+
+          # Group commits by conventional-commit prefix
+          groups = {
+              "Features":     [],
+              "Bug Fixes":    [],
+              "Improvements": [],
+              "Chores":       [],
+              "Other":        [],
+          }
+          prefix_map = {
+              "feat":     "Features",
+              "feature":  "Features",
+              "fix":      "Bug Fixes",
+              "bugfix":   "Bug Fixes",
+              "hotfix":   "Bug Fixes",
+              "refactor": "Improvements",
+              "perf":     "Improvements",
+              "improve":  "Improvements",
+              "docs":     "Chores",
+              "chore":    "Chores",
+              "ci":       "Chores",
+              "build":    "Chores",
+              "test":     "Chores",
+              "style":    "Chores",
+          }
+
+          for line in raw:
+              subject, _, sha = line.partition("|||")
+              subject = subject.strip()
+              m = re.match(r'^(\w+)[\(:]', subject)
+              key = "Other"
+              if m:
+                  key = prefix_map.get(m.group(1).lower(), "Other")
+                  subject = re.sub(r'^\w+(\([^)]*\))?[!]?:\s*', '', subject)
+              groups[key].append(f"- {subject} ({sha})")
+
+          today = date.today().isoformat()
+          has_entries = any(groups.values())
+
+          # ── Markdown (CHANGELOG.md + GitHub Release body) ─────────────────
+          md_lines = [f"## [{version}] - {today}", ""]
+          for heading, items in groups.items():
+              if items:
+                  md_lines += [f"### {heading}", ""] + items + [""]
+          if not has_entries:
+              md_lines += ["- Maintenance release", ""]
+          md_entry = "\n".join(md_lines).rstrip()
+
+          # ── HTML (plugin.xml <change-notes>) ──────────────────────────────
+          html_lines = [f"<h3>{version}</h3>", "<ul>"]
+          for heading, items in groups.items():
+              if items:
+                  html_lines.append(f"  <li><b>{heading}</b><ul>")
+                  for item in items:
+                      text = re.sub(r'^-\s*', '', item)
+                      html_lines.append(f"    <li>{text}</li>")
+                  html_lines.append("  </ul></li>")
+          if not has_entries:
+              html_lines.append("  <li>Maintenance release</li>")
+          html_lines.append("</ul>")
+          html_entry = "\n".join(html_lines)
+
+          open("/tmp/changelog_md.txt",   "w").write(md_entry)
+          open("/tmp/changelog_html.txt", "w").write(html_entry)
+          print(md_entry)
+          PYEOF
+
+          # Expose markdown entry as a multiline step output
+          {
+            echo "md_entry<<__CLOG_EOF__"
+            cat /tmp/changelog_md.txt
+            echo "__CLOG_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── Update CHANGELOG.md ────────────────────────────────────────────────
+      - name: Update CHANGELOG.md
+        run: |
+          python3 - << 'PYEOF'
+          import pathlib
+
+          entry = open("/tmp/changelog_md.txt").read()
+          clog  = pathlib.Path("CHANGELOG.md")
+
+          if clog.exists():
+              original = clog.read_text()
+              lines = original.splitlines(keepends=True)
+              # Insert new entry after the first line (title heading)
+              insert_at = 1
+              for i, line in enumerate(lines):
+                  if line.startswith("#"):
+                      insert_at = i + 1
+                      break
+              lines.insert(insert_at, "\n" + entry + "\n")
+              clog.write_text("".join(lines))
+          else:
+              clog.write_text("# Changelog\n\n" + entry + "\n")
+          PYEOF
+
+      # ── Bump version in build.gradle.kts ──────────────────────────────────
+      - name: Update build.gradle.kts
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ steps.version.outputs.new }}"/' build.gradle.kts
+
+      # ── Bump version + change-notes in plugin.xml ────────────────────────
+      - name: Update plugin.xml
+        run: |
+          python3 - "${{ steps.version.outputs.new }}" << 'PYEOF'
+          import sys, re, pathlib
+
+          version   = sys.argv[1]
+          html_body = open("/tmp/changelog_html.txt").read()
+          xml_path  = pathlib.Path("src/main/resources/META-INF/plugin.xml")
+          content   = xml_path.read_text()
+
+          # Update <version>
+          content = re.sub(
+              r'<version>[^<]*</version>',
+              f'<version>{version}</version>',
+              content,
+          )
+
+          # Replace <change-notes> CDATA block
+          new_notes = (
+              '<change-notes><![CDATA[\n'
+              f'    {html_body}\n'
+              '    ]]></change-notes>'
+          )
+          content = re.sub(
+              r'<change-notes><!\[CDATA\[.*?\]\]></change-notes>',
+              new_notes,
+              content,
+              flags=re.DOTALL,
+          )
+
+          xml_path.write_text(content)
+          print(f"plugin.xml updated to {version}")
+          PYEOF
+
+      # ── Build plugin ───────────────────────────────────────────────────────
+      - name: Build plugin
+        run: ./gradlew buildPlugin --no-daemon
+
+      # ── (Optional) Sign plugin ─────────────────────────────────────────────
+      # Add CERTIFICATE_CHAIN / PRIVATE_KEY / PRIVATE_KEY_PASSWORD secrets to
+      # enable signing. The step is skipped silently when they are absent.
+      - name: Sign plugin
+        if: >-
+          !inputs.dry_run &&
+          env.CERTIFICATE_CHAIN != ''
+        env:
+          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+        run: ./gradlew signPlugin --no-daemon
+
+      # ── Commit, tag, push ──────────────────────────────────────────────────
+      - name: Commit version bump and tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add build.gradle.kts \
+                  src/main/resources/META-INF/plugin.xml \
+                  CHANGELOG.md
+          git commit -m "chore: release ${{ steps.version.outputs.tag }} [skip ci]"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin HEAD:${{ github.ref_name }} --follow-tags
+
+      # ── GitHub Release ─────────────────────────────────────────────────────
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "AI Review ${{ steps.version.outputs.tag }}"
+          body: ${{ steps.changelog.outputs.md_entry }}
+          files: |
+            build/distributions/*.zip
+          draft: false
+          prerelease: false
+
+      # ── (Optional) Publish to JetBrains Marketplace ───────────────────────
+      # Uncomment when you have a PUBLISH_TOKEN secret configured.
+      # - name: Publish to Marketplace
+      #   if: ${{ !inputs.dry_run }}
+      #   env:
+      #     PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+      #   run: ./gradlew publishPlugin --no-daemon
