@@ -1,5 +1,6 @@
 package com.aireview.ui
 
+import com.aireview.action.GenerateCommitMessageAction
 import com.aireview.action.GeneratePrDescriptionAction
 import com.aireview.action.OneClickReviewAction
 import com.aireview.action.PublishToGitHubAction
@@ -68,6 +69,7 @@ class ReviewToolWindowPanel(
     private val clearButton = JButton("Clear")
     private val settingsButton = JButton("Settings")
     private val prDescriptionButton = JButton("PR Description")
+    private val commitMessageButton = JButton("Commit Message")
     private val reviewAndCreatePrButton = JButton("Review & Create PR")
     private val selectAllButton = JButton("Select All")
     private val deselectAllButton = JButton("Deselect All")
@@ -117,6 +119,7 @@ class ReviewToolWindowPanel(
             buttonRow.add(clearButton)
             buttonRow.add(settingsButton)
             buttonRow.add(prDescriptionButton)
+            buttonRow.add(commitMessageButton)
             add(buttonRow)
 
             // Row 3: Selection + Publish buttons
@@ -165,6 +168,10 @@ class ReviewToolWindowPanel(
 
         prDescriptionButton.addActionListener {
             GeneratePrDescriptionAction.generatePrDescription(project)
+        }
+
+        commitMessageButton.addActionListener {
+            GenerateCommitMessageAction.generateCommitMessage(project)
         }
 
         reviewAndCreatePrButton.addActionListener {

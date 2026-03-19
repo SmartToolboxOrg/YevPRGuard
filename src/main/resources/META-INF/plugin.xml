@@ -154,5 +154,13 @@
                 description="Generate a PR title and description from the current diff using AI">
             <add-to-group group-id="com.aireview.ActionGroup" anchor="last"/>
         </action>
+
+        <!-- Generate Commit Message standalone action -->
+        <action id="com.aireview.action.GenerateCommitMessage"
+                class="com.aireview.action.GenerateCommitMessageAction"
+                text="Generate Commit Message"
+                description="Generate a commit message from staged changes and copy it to the clipboard">
+            <add-to-group group-id="com.aireview.ActionGroup" anchor="last"/>
+        </action>
     </actions>
 </idea-plugin>

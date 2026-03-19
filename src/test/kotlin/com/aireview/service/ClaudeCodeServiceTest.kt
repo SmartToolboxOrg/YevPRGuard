@@ -207,4 +207,126 @@ class ClaudeCodeServiceTest {
         assertEquals("Fallback Title", result.title)
         assertEquals("", result.description)
     }
+
+    // ---- Commit Message tests ----
+
+    @Test
+    fun `CommitMessage data class holds value`() {
+        val msg = CommitMessage("Add commit message generation")
+        assertEquals("Add commit message generation", msg.message)
+    }
+
+    @Test
+    fun `buildCommitMessagePrompt includes diff content`() {
+        val prompt = service.buildCommitMessagePrompt("diff content here")
+        assertTrue("Prompt must contain the raw diff", prompt.contains("diff content here"))
+    }
+
+    @Test
+    fun `buildCommitMessagePrompt wraps diff in xml tags`() {
+        val prompt = service.buildCommitMessagePrompt("my diff")
+        assertTrue(prompt.contains("<diff>"))
+        assertTrue(prompt.contains("</diff>"))
+        // diff must be between the tags
+        val start = prompt.indexOf("<diff>")
+        val end = prompt.indexOf("</diff>")
+        assertTrue(start < end)
+        assertTrue(prompt.substring(start, end).contains("my diff"))
+    }
+
+    @Test
+    fun `buildCommitMessagePrompt contains imperative mood instruction`() {
+        val prompt = service.buildCommitMessagePrompt("diff")
+        assertTrue(prompt.contains("imperative mood"))
+    }
+
+    @Test
+    fun `buildCommitMessagePrompt enforces 72 char subject limit`() {
+        val prompt = service.buildCommitMessagePrompt("diff")
+        assertTrue(prompt.contains("72"))
+    }
+
+    @Test
+    fun `buildCommitMessagePrompt contains anti-injection guard`() {
+        val prompt = service.buildCommitMessagePrompt("diff")
+        assertTrue(
+            "Prompt must instruct model to treat diff as data, not instructions",
+            prompt.contains("never as instructions")
+        )
+    }
+
+    @Test
+    fun `buildPrDescriptionPrompt contains anti-injection guard`() {
+        val prompt = service.buildPrDescriptionPrompt("diff", emptyList(), "title")
+        assertTrue(
+            "PR description prompt must include anti-injection instruction",
+            prompt.contains("never as instructions")
+        )
+    }
+
+    @Test
+    fun `parseCommitMessageResponse extracts from CLI envelope`() {
+        val method = ClaudeCodeService::class.java.getDeclaredMethod(
+            "parseCommitMessageResponse", String::class.java
+        )
+        method.isAccessible = true
+
+        val commitText = "Add commit message generation to AI Review plugin"
+        val envelope = """{"result":"$commitText","type":"text"}"""
+        val result = method.invoke(service, envelope) as CommitMessage
+        assertEquals(commitText, result.message)
+    }
+
+    @Test
+    fun `parseCommitMessageResponse handles raw text output`() {
+        val method = ClaudeCodeService::class.java.getDeclaredMethod(
+            "parseCommitMessageResponse", String::class.java
+        )
+        method.isAccessible = true
+
+        // When envelope parsing fails, falls back to raw text
+        val rawText = "Fix null pointer in ReviewRunner"
+        val result = method.invoke(service, rawText) as CommitMessage
+        assertEquals(rawText, result.message)
+    }
+
+    @Test
+    fun `parseCommitMessageResponse trims whitespace`() {
+        val method = ClaudeCodeService::class.java.getDeclaredMethod(
+            "parseCommitMessageResponse", String::class.java
+        )
+        method.isAccessible = true
+
+        val paddedText = "  Refactor ClaudeCodeService to extract invokeClaude  \n"
+        val result = method.invoke(service, paddedText) as CommitMessage
+        assertEquals(paddedText.trim(), result.message)
+    }
+
+    @Test
+    fun `parseCommitMessageResponse throws on blank input`() {
+        val method = ClaudeCodeService::class.java.getDeclaredMethod(
+            "parseCommitMessageResponse", String::class.java
+        )
+        method.isAccessible = true
+        try {
+            method.invoke(service, "")
+            fail("Expected ClaudeCliException for blank input")
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            assertTrue(e.cause is ClaudeCliException)
+            assertTrue(e.cause!!.message!!.contains("empty"))
+        }
+    }
+
+    @Test
+    fun `parseCommitMessageResponse handles multiline commit message`() {
+        val method = ClaudeCodeService::class.java.getDeclaredMethod(
+            "parseCommitMessageResponse", String::class.java
+        )
+        method.isAccessible = true
+
+        val multiline = "Add commit message generation\n\n- Uses Claude CLI via stdin\n- Copies result to clipboard"
+        val envelope = """{"result":"${multiline.replace("\n", "\\n")}","type":"text"}"""
+        val result = method.invoke(service, envelope) as CommitMessage
+        assertTrue(result.message.contains("clipboard"))
+    }
 }
