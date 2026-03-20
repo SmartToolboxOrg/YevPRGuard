@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.aireview.plugin</id>
     <name>AI Review</name>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <vendor email="yevgen.polukov@gmail.com" url="https://github.com/SmartToolboxOrg">Yevgen Polukov</vendor>
 
     <description><![CDATA[
@@ -44,15 +44,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
-    <h3>1.0.0</h3>
-    <ul>
-      <li>Initial release</li>
-      <li>AI-powered code review with inline annotations and quick-fix suggestions</li>
-      <li>Single-file and full-diff review modes</li>
-      <li>Manual review comment support</li>
-      <li>Publish findings to GitHub PRs</li>
-      <li>AI-generated PR descriptions</li>
-    </ul>
+    <h3>1.0.1</h3>
+<ul>
+  <li><b>Other</b><ul>
+    <li>Fix multiline step output when changelog lacks trailing newline (862a554)</li>
+    <li>Add automated release workflow and initial CHANGELOG (1dfc606)</li>
+    <li>Add GenerateCommitMessageAction to create commit messages via Claude CLI (f168a06)</li>
+  </ul></li>
+</ul>
     ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
