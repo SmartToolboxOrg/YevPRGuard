@@ -152,9 +152,12 @@ jobs:
           PYEOF
 
           # Expose markdown entry as a multiline step output
+          # NOTE: bare `echo` after cat ensures the closing delimiter is always
+          # on its own line even when the file has no trailing newline.
           {
             echo "md_entry<<__CLOG_EOF__"
             cat /tmp/changelog_md.txt
+            echo
             echo "__CLOG_EOF__"
           } >> "$GITHUB_OUTPUT"
 
