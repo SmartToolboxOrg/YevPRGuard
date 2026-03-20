@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1] - 2026-03-20
+
+### Other
+
+- Fix multiline step output when changelog lacks trailing newline (862a554)
+- Add automated release workflow and initial CHANGELOG (1dfc606)
+- Add GenerateCommitMessageAction to create commit messages via Claude CLI (f168a06)
+
 All notable changes to **AI Review** are documented here.
 
 ## [1.0.0] - 2026-03-20
