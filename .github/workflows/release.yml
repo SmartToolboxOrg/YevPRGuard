@@ -225,17 +225,32 @@ jobs:
           print(f"plugin.xml updated to {version}")
           PYEOF
 
+      # ── Resolve which optional secrets are available ───────────────────────
+      # Secrets can't be read in `if:` expressions directly, so we expose
+      # presence flags as step outputs here and reference those below.
+      - name: Detect optional secrets
+        id: secrets
+        run: |
+          echo "has_signing=${{ secrets.CERTIFICATE_CHAIN != '' }}" >> "$GITHUB_OUTPUT"
+          echo "has_publish=${{ secrets.PUBLISH_TOKEN != '' }}"     >> "$GITHUB_OUTPUT"
+
       # ── Build plugin ───────────────────────────────────────────────────────
       - name: Build plugin
         run: ./gradlew buildPlugin --no-daemon
 
-      # ── (Optional) Sign plugin ─────────────────────────────────────────────
-      # Add CERTIFICATE_CHAIN / PRIVATE_KEY / PRIVATE_KEY_PASSWORD secrets to
-      # enable signing. The step is skipped silently when they are absent.
+      # ── Verify plugin compatibility ────────────────────────────────────────
+      # Runs the JetBrains Plugin Verifier against all IDE versions listed in
+      # build.gradle.kts → runPluginVerifier. Fails on real compatibility
+      # problems; warns only on deprecations.
+      - name: Verify plugin compatibility
+        run: ./gradlew runPluginVerifier --no-daemon
+
+      # ── Sign plugin ────────────────────────────────────────────────────────
+      # Required for JetBrains Marketplace submission. Skipped when the signing
+      # secrets (CERTIFICATE_CHAIN / PRIVATE_KEY / PRIVATE_KEY_PASSWORD) are
+      # not configured — add them in GitHub → Settings → Secrets to enable.
       - name: Sign plugin
-        if: >-
-          !inputs.dry_run &&
-          env.CERTIFICATE_CHAIN != ''
+        if: ${{ !inputs.dry_run && steps.secrets.outputs.has_signing == 'true' }}
         env:
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
@@ -265,13 +280,15 @@ jobs:
           body: ${{ steps.changelog.outputs.md_entry }}
           files: |
             build/distributions/*.zip
+            build/distributions/*.zip.chain
           draft: false
           prerelease: false
 
-      # ── (Optional) Publish to JetBrains Marketplace ───────────────────────
-      # Uncomment when you have a PUBLISH_TOKEN secret configured.
-      # - name: Publish to Marketplace
-      #   if: ${{ !inputs.dry_run }}
-      #   env:
-      #     PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
-      #   run: ./gradlew publishPlugin --no-daemon
+      # ── Publish to JetBrains Marketplace ──────────────────────────────────
+      # Runs automatically when the PUBLISH_TOKEN secret is configured.
+      # Get your token at: https://plugins.jetbrains.com/author/me/tokens
+      - name: Publish to JetBrains Marketplace
+        if: ${{ !inputs.dry_run && steps.secrets.outputs.has_publish == 'true' }}
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: ./gradlew publishPlugin --no-daemon

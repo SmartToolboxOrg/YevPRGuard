@@ -33,11 +33,32 @@ intellij {
 tasks {
     patchPluginXml {
         sinceBuild.set("241")
-        untilBuild.set("251.*")
+        // untilBuild is intentionally not set — the plugin is compatible with all
+        // future IDE versions until proven otherwise. JetBrains Marketplace rejects
+        // uploads that exclude current stable builds, and a hardcoded upper bound
+        // requires a re-release for every new IDE version.
     }
 
     buildSearchableOptions {
         enabled = false
+    }
+
+    runPluginVerifier {
+        // Verify against the minimum supported build and the two most recent releases.
+        // Add or remove entries here as new IDE versions are released.
+        ideVersions.set(listOf(
+            "IC-2024.1.7",   // minimum (sinceBuild = 241)
+            "IC-2024.2.5",
+            "IC-2024.3.5",
+            "IC-2025.1"
+        ))
+        // Fail the build only on real compatibility problems, not on warnings.
+        failureLevel.set(
+            listOf(
+                org.jetbrains.intellij.tasks.RunPluginVerifierTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+                org.jetbrains.intellij.tasks.RunPluginVerifierTask.FailureLevel.INVALID_PLUGIN
+            )
+        )
     }
 
     signPlugin {
@@ -48,5 +69,7 @@ tasks {
 
     publishPlugin {
         token.set(System.getenv("PUBLISH_TOKEN"))
+        // Publish to the default (Stable) channel. Change to "EAP" for pre-releases.
+        channels.set(listOf("Stable"))
     }
 }
