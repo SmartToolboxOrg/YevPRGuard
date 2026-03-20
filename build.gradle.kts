@@ -33,10 +33,10 @@ intellij {
 tasks {
     patchPluginXml {
         sinceBuild.set("241")
-        // untilBuild is intentionally not set — the plugin is compatible with all
-        // future IDE versions until proven otherwise. JetBrains Marketplace rejects
-        // uploads that exclude current stable builds, and a hardcoded upper bound
-        // requires a re-release for every new IDE version.
+        // Empty string = no upper bound. Must be set explicitly — if omitted,
+        // the Gradle IntelliJ plugin v1 defaults to "${sinceBuild}.*" (i.e. 241.*)
+        // which blocks installation on any newer IDE build.
+        untilBuild.set("")
     }
 
     buildSearchableOptions {
