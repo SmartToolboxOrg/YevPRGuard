@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.3] - 2026-03-20
+
+### Other
+
+- Fix untilBuild to allow installation on all IDE versions (c7720cd)
+
 ## [1.0.2] - 2026-03-20
 
 ### Other
