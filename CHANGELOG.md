@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2] - 2026-03-20
+
+### Other
+
+- Add plugin verifier, fix secret detection, and refresh dark icon (0d98bda)
+
 ## [1.0.1] - 2026-03-20
 
 ### Other
